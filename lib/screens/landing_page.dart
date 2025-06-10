@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_signin_button/flutter_signin_button.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'email_signup_page.dart';
+import 'registration_page.dart';
 import 'package:gotrue/gotrue.dart';
 
 class LandingPage extends StatelessWidget {
@@ -28,11 +28,11 @@ class LandingPage extends StatelessWidget {
 
 
 
-  /// Navigates to the email sign-up page
+  /// Navigates to the registration page
   void _signUpWithEmail(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const EmailSignUpPage()),
+      MaterialPageRoute(builder: (context) => const RegistrationPage()),
     );
   }
 
