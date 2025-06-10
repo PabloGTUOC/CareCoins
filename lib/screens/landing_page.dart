@@ -40,36 +40,38 @@ class LandingPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF1F3), // pastel pink background
-      body: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Center(
+      body: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 800),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App Title
               Text(
-                "Welcome to CareCoins",
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.pink[700],
-                ),
+                'CareCoins',
+                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.pink[700],
+                    ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-              // Subtitle
+              const SizedBox(height: 12),
               Text(
-                "Earn coins for the care you give.",
+                'Earn coins for the care you give.',
                 style: Theme.of(context).textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 40),
-              // Google Sign-In
+              const SizedBox(height: 32),
               SignInButton(
                 Buttons.Google,
                 onPressed: () => _signInWithGoogle(context),
               ),
               const SizedBox(height: 16),
-              // Email Sign-Up
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFC8E6C9), // pastel green
@@ -80,7 +82,7 @@ class LandingPage extends StatelessWidget {
                 ),
                 onPressed: () => _signUpWithEmail(context),
                 child: const Text(
-                  "Sign up with Email",
+                  'Sign up with Email',
                   style: TextStyle(fontSize: 16),
                 ),
               ),
