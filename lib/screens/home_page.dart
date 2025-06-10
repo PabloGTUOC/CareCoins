@@ -11,13 +11,21 @@ class HomePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('CareCoins Dashboard')),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('Welcome, ${user?.email ?? "Guest"}!', style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 800),
+          padding: const EdgeInsets.all(24.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Welcome, ${user?.email ?? "Guest"}!', style: Theme.of(context).textTheme.headlineMedium),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () async {
                 final user = Supabase.instance.client.auth.currentUser;
                 if (user != null) {
                   // Find the latest login_history entry without a logout_time
