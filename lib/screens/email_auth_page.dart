@@ -1,33 +1,38 @@
 import 'package:flutter/material.dart';
 import '../services/email_auth_service.dart';
 
-class RegistrationPage extends StatefulWidget {
-  const RegistrationPage({super.key});
+class EmailAuthPage extends StatefulWidget {
+  const EmailAuthPage({super.key});
 
   @override
-  State<RegistrationPage> createState() => _RegistrationPageState();
+  State<EmailAuthPage> createState() => _EmailAuthPageState();
 }
 
-class _RegistrationPageState extends State<RegistrationPage> {
+class _EmailAuthPageState extends State<EmailAuthPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = EmailAuthService();
+  bool _signInMode = true;
 
-  Future<void> _register() async {
+  Future<void> _authenticate() async {
     try {
-      final response = await _authService.signUp(
-        _emailController.text,
-        _passwordController.text,
-      );
-
-      if (response.user != null) {
+      final response = _signInMode
+          ? await _authService.signIn(
+              _emailController.text,
+              _passwordController.text,
+            )
+          : await _authService.signUp(
+              _emailController.text,
+              _passwordController.text,
+            );
+      if (!_signInMode && response.user != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Confirmation email sent.')),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration failed: $e')),
+        SnackBar(content: Text('Authentication failed: $e')),
       );
     }
   }
@@ -35,7 +40,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Register with Email')),
+      appBar: AppBar(
+        title: Text(_signInMode ? 'Sign in with Email' : 'Register with Email'),
+      ),
       body: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 800),
@@ -58,8 +65,17 @@ class _RegistrationPageState extends State<RegistrationPage> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: _register,
-                child: const Text('Create Account'),
+                onPressed: _authenticate,
+                child: Text(_signInMode ? 'Sign In' : 'Create Account'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => setState(() => _signInMode = !_signInMode),
+                child: Text(
+                  _signInMode
+                      ? 'Need an account? Sign up'
+                      : 'Have an account? Sign in',
+                ),
               ),
             ],
           ),
