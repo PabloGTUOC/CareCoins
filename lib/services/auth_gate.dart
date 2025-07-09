@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../screens/home_page.dart';
@@ -12,6 +13,7 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
+  late final StreamSubscription<AuthState> _authSubscription;
   bool _checkingProfile = false;
   bool _needsFamilySetup = false;
 
@@ -19,7 +21,8 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
 
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    _authSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.session != null) {
         _checkUserProfile();
       }
@@ -63,6 +66,12 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   @override
+  void dispose() {
+    _authSubscription.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final session = Supabase.instance.client.auth.currentSession;
 
@@ -77,5 +86,4 @@ class _AuthGateState extends State<AuthGate> {
     } else {
       return const HomePage();
     }
-  }
-}
+  }}
