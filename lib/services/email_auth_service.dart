@@ -6,4 +6,9 @@ class EmailAuthService {
   Future<AuthResponse> signUp(String email, String password) {
     return _client.auth.signUp(email: email, password: password);
   }
+
+  Future<AuthResponse> signIn(String email, String password) {
+    return _client.auth
+        .signInWithPassword(email: email, password: password);
+  }
 }
