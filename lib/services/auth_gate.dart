@@ -20,6 +20,9 @@ class _AuthGateState extends State<AuthGate> {
     super.initState();
 
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.session != null) {
+        _checkUserProfile();
+      }
       setState(() {});
     });
 
