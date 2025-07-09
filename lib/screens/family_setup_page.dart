@@ -63,6 +63,15 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    _familyNameController.dispose();
+    _roleController.dispose();
+    _actorsController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Family Setup')),
