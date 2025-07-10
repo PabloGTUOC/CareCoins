@@ -22,6 +22,8 @@ class _HomePageState extends State<HomePage> {
   DateTime? _selectedDay;
   final Map<DateTime, List<Activity>> _events = {};
   final List<Map<String, dynamic>> _family = [];
+  final List<Map<String, dynamic>> _actors = [];
+  String? _familyName;
 
   @override
   void initState() {
@@ -58,6 +60,17 @@ class _HomePageState extends State<HomePage> {
             .select('title, scheduled_at')
             .eq('family_id', familyId);
 
+        final familyInfo = await Supabase.instance.client
+            .from('families')
+            .select('name')
+            .eq('id', familyId)
+            .maybeSingle();
+
+        final actorList = await Supabase.instance.client
+            .from('actors')
+            .select('name, type')
+            .eq('family_id', familyId);
+
         final Map<DateTime, List<Activity>> mapped = {};
         for (final a in activities) {
           final when = DateTime.parse(a['scheduled_at']).toLocal();
@@ -68,8 +81,11 @@ class _HomePageState extends State<HomePage> {
         }
 
         setState(() {
+          _familyName = familyInfo?['name'] as String?;
           _family.clear();
           _family.addAll(List<Map<String, dynamic>>.from(members));
+          _actors.clear();
+          _actors.addAll(List<Map<String, dynamic>>.from(actorList));
           _events.clear();
           _events.addAll(mapped);
         });
@@ -122,8 +138,33 @@ class _HomePageState extends State<HomePage> {
     final userName =
         user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
     return Scaffold(
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: const [
+            DrawerHeader(child: Text('Menu')),
+            ListTile(title: Text('Home')),
+          ],
+        ),
+      ),
       appBar: AppBar(
-          title: Text('CareCoins Dashboard - $userName'),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('CareCoins Dashboard'),
+            if (_familyName != null)
+              Text(
+                'Family: $_familyName',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+              ),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: () => _logout(context),
@@ -157,6 +198,21 @@ class _HomePageState extends State<HomePage> {
               eventLoader: _getEventsForDay,
             ),
             const SizedBox(height: 24),
+            if (_actors.isNotEmpty) ...[
+              Text(
+                'Family Actors',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              ..._actors.map(
+                (a) => ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(a['name'] ?? ''),
+                  subtitle: Text(a['type'] ?? ''),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
             Text(
               'Family Members',
               style: Theme.of(context).textTheme.titleMedium,
