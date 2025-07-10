@@ -68,7 +68,7 @@ class _HomePageState extends State<HomePage> {
 
         final actorList = await Supabase.instance.client
             .from('actors')
-            .select('name, type')
+            .select('id, name, type')
             .eq('family_id', familyId);
 
         final Map<DateTime, List<Activity>> mapped = {};
@@ -222,9 +222,7 @@ class _HomePageState extends State<HomePage> {
                                 )
                                 .toList(),
                         onChanged: (val) {
-                          if (val != null) {
-                            setState(() => type = val);
-                          }
+                          if (val != null) setState(() => type = val);
                         },
                       ),
                       if (type == 'Caring of')
@@ -234,14 +232,16 @@ class _HomePageState extends State<HomePage> {
                             labelText: 'Caring For',
                           ),
                           items:
-                              _actors
-                                  .map(
-                                    (a) => DropdownMenuItem(
-                                      value: a['name'].toString(),
-                                      child: Text(a['name']),
-                                    ),
-                                  )
-                                  .toList(),
+                              _actors.map<DropdownMenuItem<String>>((actor) {
+                                final actorId =
+                                    actor['id']
+                                        ?.toString(); // ensure String type
+                                final actorName = actor['name'] ?? 'Unnamed';
+                                return DropdownMenuItem<String>(
+                                  value: actorId,
+                                  child: Text(actorName),
+                                );
+                              }).toList(),
                           onChanged:
                               (val) => setState(() => selectedActor = val),
                         ),
@@ -315,14 +315,23 @@ class _HomePageState extends State<HomePage> {
                         'family_id': familyId,
                       };
 
-                      await Supabase.instance.client
-                          .from('activities')
-                          .insert(activityPayload);
+                      final response = await Supabase.instance.client.functions
+                          .invoke('create-activity', body: activityPayload);
 
-                      Navigator.pop(context);
-                      await _loadDashboardData();
+                      if (response.status == 200) {
+                        Navigator.pop(context);
+                        await _loadDashboardData();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Failed to create activity: ${response.data}',
+                            ),
+                          ),
+                        );
+                      }
                     },
-                    child: const Text('Save'),
+                    child: const Text('Create'),
                   ),
                 ],
               ),

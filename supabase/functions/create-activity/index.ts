@@ -9,7 +9,7 @@ serve(async (req) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type, apikey",
+        "Access-Control-Allow-Headers": "Authorization, x-client-info, Content-Type, apikey",
       },
     });
   }
@@ -53,7 +53,7 @@ serve(async (req) => {
     const activity = {
       title,
       type,
-      actor: type === "Caring of" ? actor : null,
+      actor_id: type === "Caring of" ? actor : null,
       scheduled_at,
       ends_at,
       user_id: user.id,
@@ -65,11 +65,14 @@ serve(async (req) => {
       .insert(activity);
 
     if (insertError) {
+      console.error('Insert error:', insertError);
+      console.error('Activity payload:', activity);
       return jsonResponse({ error: insertError.message }, 500);
     }
 
     return jsonResponse({ success: true });
   } catch (err) {
+    console.error('Unhandled error:', err);
     return jsonResponse({ error: "Invalid request payload" }, 400);
   }
 });
