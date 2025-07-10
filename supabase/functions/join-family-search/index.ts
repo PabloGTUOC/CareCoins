@@ -4,23 +4,23 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 serve(async (req) => {
   // ✅ Handle preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      status: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type, apikey',
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type, x-client-info, apikey",
       },
     });
   }
 
-  // ✅ Supabase client
   const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
     {
       global: {
-        headers: { Authorization: req.headers.get('Authorization')! },
+        headers: { Authorization: req.headers.get("Authorization")! },
       },
     }
   );
@@ -33,11 +33,25 @@ serve(async (req) => {
     }
 
     const isUuid = /^[0-9a-fA-F-]{36}$/.test(query);
-    const filter = isUuid
-      ? supabase.from("families").select("*").eq("id", query).limit(1)
-      : supabase.from("families").select("*").ilike("name", `%${query}%`).limit(5);
+    let data, error;
 
-    const { data, error } = await filter;
+    if (isUuid) {
+      const result = await supabase
+        .from("families")
+        .select("*")
+        .eq("id", query)
+        .limit(1);
+      data = result.data;
+      error = result.error;
+    } else {
+      const result = await supabase
+        .from("families")
+        .select("*")
+        .ilike("name", `%${query}%`)
+        .limit(5);
+      data = result.data;
+      error = result.error;
+    }
 
     if (error) {
       return jsonResponse({ error: error.message }, 500);
@@ -49,7 +63,6 @@ serve(async (req) => {
   }
 });
 
-// ✅ Helper
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,

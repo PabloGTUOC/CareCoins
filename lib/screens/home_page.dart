@@ -24,6 +24,9 @@ class _HomePageState extends State<HomePage> {
   final List<Map<String, dynamic>> _family = [];
   final List<Map<String, dynamic>> _actors = [];
   String? _familyName;
+  int? _coinsStartMonth;
+  int? _coinsPaid;
+  int? _coinsPending;
 
   @override
   void initState() {
@@ -38,33 +41,32 @@ class _HomePageState extends State<HomePage> {
     final profile =
         await Supabase.instance.client
             .from('users')
-            .select('carecoins_balance, family_id')
+            .select('coin_balance, family_id')
             .eq('id', user.id)
             .maybeSingle();
 
     if (profile != null) {
-      setState(() {
-        _balance = profile['carecoins_balance'] ?? 0;
-      });
-
+      final balance = profile['coin_balance'] ?? 0;
       final familyId = profile['family_id'];
+
       if (familyId != null) {
         final members = await Supabase.instance.client
             .from('users')
-            .select('id, email, carecoins_balance')
+            .select('id, email, coin_balance')
             .eq('family_id', familyId)
-            .order('carecoins_balance', ascending: false);
+            .order('coin_balance', ascending: false);
 
         final activities = await Supabase.instance.client
             .from('activities')
             .select('title, scheduled_at')
             .eq('family_id', familyId);
 
-        final familyInfo = await Supabase.instance.client
-            .from('families')
-            .select('name')
-            .eq('id', familyId)
-            .maybeSingle();
+        final familyInfo =
+            await Supabase.instance.client
+                .from('families')
+                .select('name, coins_start_month, coins_paid, coins_pending')
+                .eq('id', familyId)
+                .maybeSingle();
 
         final actorList = await Supabase.instance.client
             .from('actors')
@@ -81,7 +83,11 @@ class _HomePageState extends State<HomePage> {
         }
 
         setState(() {
-          _familyName = familyInfo?['name'] as String?;
+          _balance = balance;
+          _familyName = familyInfo?['name'];
+          _coinsStartMonth = familyInfo?['coins_start_month'];
+          _coinsPaid = familyInfo?['coins_paid'];
+          _coinsPending = familyInfo?['coins_pending'];
           _family.clear();
           _family.addAll(List<Map<String, dynamic>>.from(members));
           _actors.clear();
@@ -135,8 +141,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
-    final userName =
-        user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
+    final userName = user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
     return Scaffold(
       drawer: Drawer(
         child: ListView(
@@ -149,10 +154,11 @@ class _HomePageState extends State<HomePage> {
       ),
       appBar: AppBar(
         leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
+          builder:
+              (context) => IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,7 +167,9 @@ class _HomePageState extends State<HomePage> {
             if (_familyName != null)
               Text(
                 'Family: $_familyName',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.white70),
               ),
           ],
         ),
@@ -183,7 +191,22 @@ class _HomePageState extends State<HomePage> {
               style: Theme.of(context).textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
+            if (_coinsStartMonth != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Family Coin Status',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Total This Month: $_coinsStartMonth CC',
+                textAlign: TextAlign.center,
+              ),
+              Text('Paid: $_coinsPaid CC', textAlign: TextAlign.center),
+              Text('Pending: $_coinsPending CC', textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+            ],
             TableCalendar<Activity>(
               firstDay: DateTime.utc(2020, 1, 1),
               lastDay: DateTime.utc(2030, 12, 31),
@@ -223,7 +246,7 @@ class _HomePageState extends State<HomePage> {
                 .map(
                   (m) => ListTile(
                     title: Text(m['email'] ?? ''),
-                    trailing: Text('${m['carecoins_balance'] ?? 0} CC'),
+                    trailing: Text('${m['coin_balance'] ?? 0} CC'),
                   ),
                 ),
           ],

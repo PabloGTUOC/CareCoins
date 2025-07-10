@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-const _actorTypes = ['Child', 'Adult', 'Senior', 'Pet'];
+const _actorTypes = ['child', 'elderly', 'pet'];
+const _actorTypeLabels = {'child': 'Child', 'elderly': 'Elderly', 'pet': 'Pet'};
 
 class _ActorEntry {
   _ActorEntry()
@@ -21,31 +22,86 @@ class FamilySetupPage extends StatefulWidget {
 
 class _FamilySetupPageState extends State<FamilySetupPage> {
   bool _createMode = false;
-
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _familyNameController = TextEditingController();
   final TextEditingController _roleController = TextEditingController();
   final List<_ActorEntry> _actors = [_ActorEntry()];
+  List<Map<String, dynamic>> _searchResults = [];
 
-  Future<void> _joinFamily() async {
+  Future<void> _searchFamilies() async {
     final query = _searchController.text.trim();
     if (query.isEmpty) return;
     try {
-      await Supabase.instance.client.functions.invoke(
+      final response = await Supabase.instance.client.functions.invoke(
         'join-family-search',
         body: {'query': query},
       );
-      if (mounted) {
+
+      if (response.status == 200 && response.data != null) {
+        setState(() {
+          _searchResults = List<Map<String, dynamic>>.from(
+            response.data['families'],
+          );
+        });
+      } else {
+        setState(() => _searchResults = []);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Request sent')));
+        ).showSnackBar(SnackBar(content: Text('No families found')));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      setState(() => _searchResults = []);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Search failed: $e')));
+    }
+  }
+
+  Future<void> _promptAndJoinFamily(String familyId) async {
+    final pinController = TextEditingController();
+    final result = await showDialog<String?>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Enter Family PIN'),
+            content: TextField(
+              controller: pinController,
+              keyboardType: TextInputType.number,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'PIN'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, pinController.text),
+                child: const Text('Join'),
+              ),
+            ],
+          ),
+    );
+
+    final pin = result?.trim();
+    if (pin == null || pin.isEmpty) return;
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'join-family',
+        body: {'family_id': familyId, 'pin': pin},
+      );
+      if (response.status == 200) {
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: ${response.data['error']}')),
+        );
       }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -63,30 +119,21 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
         'create-family',
         body: {'family_name': name, 'role': role, 'actors': actorPayload},
       );
-
       if (response.status == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Family created')));
-          await Future.delayed(
-            const Duration(milliseconds: 800),
-          ); // optional pause for UX
-          Navigator.pushReplacementNamed(context, '/home');
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Failed: ${response.data}')));
-        }
-      }
-    } catch (e) {
-      if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ).showSnackBar(const SnackBar(content: Text('Family created')));
+        await Future.delayed(const Duration(milliseconds: 800));
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed: ${response.data}')));
       }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -125,11 +172,29 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               ElevatedButton(
-                onPressed: _joinFamily,
+                onPressed: _searchFamilies,
                 child: const Text('Search'),
               ),
+              const SizedBox(height: 16),
+              if (_searchResults.isNotEmpty)
+                Column(
+                  children:
+                      _searchResults
+                          .map(
+                            (family) => ListTile(
+                              title: Text(family['name'] ?? 'Unnamed'),
+                              subtitle: Text('ID: ${family['id']}'),
+                              trailing: ElevatedButton(
+                                child: const Text('Join'),
+                                onPressed:
+                                    () => _promptAndJoinFamily(family['id']),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                ),
             ] else ...[
               TextField(
                 controller: _familyNameController,
@@ -175,7 +240,7 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                                     .map(
                                       (t) => DropdownMenuItem(
                                         value: t,
-                                        child: Text(t),
+                                        child: Text(_actorTypeLabels[t]!),
                                       ),
                                     )
                                     .toList(),
@@ -183,9 +248,10 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                           if (_actors.length > 1)
                             IconButton(
                               icon: const Icon(Icons.remove_circle),
-                              onPressed: () {
-                                setState(() => _actors.removeAt(entry.key));
-                              },
+                              onPressed:
+                                  () => setState(
+                                    () => _actors.removeAt(entry.key),
+                                  ),
                             ),
                         ],
                       ),

@@ -2,13 +2,16 @@ import 'package:carecoins/services/auth_gate.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:carecoins/screens/home_page.dart';
+import 'package:carecoins/screens/family_setup_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
     url: 'https://qbshcfljuxkgrpnppykp.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFic2hjZmxqdXhrZ3JwbnBweWtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkzODIyNDAsImV4cCI6MjA2NDk1ODI0MH0.cAjCdZvZ3ylIW3k-h4Jixw7Z6se_LzoDKC5QiS1WS2w', // TODO: Replace with your Supabase anon key
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFic2hjZmxqdXhrZ3JwbnBweWtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkzODIyNDAsImV4cCI6MjA2NDk1ODI0MH0.cAjCdZvZ3ylIW3k-h4Jixw7Z6se_LzoDKC5QiS1WS2w', // TODO: Replace with your Supabase anon key
   );
 
   runApp(const CareCoinsApp());
@@ -32,7 +35,12 @@ class CareCoinsApp extends StatelessWidget {
         ),
         textTheme: GoogleFonts.latoTextTheme(),
       ),
-      home: const AuthGate(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const AuthGate(),
+        '/home': (context) => const HomePage(),
+        '/family-setup': (context) => const FamilySetupPage(),
+      },
     );
   }
 }
