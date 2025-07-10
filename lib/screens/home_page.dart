@@ -122,7 +122,16 @@ class _HomePageState extends State<HomePage> {
     final userName =
         user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
     return Scaffold(
-      appBar: AppBar(title: Text('CareCoins Dashboard - $userName')),
+      appBar: AppBar(
+          title: Text('CareCoins Dashboard - $userName'),
+        actions: [
+          IconButton(
+            onPressed: () => _logout(context),
+            tooltip: 'Logout',
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
