@@ -10,7 +10,7 @@ serve(async (req) => {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type, x-client-info, apikey",
       },
     });
   }
@@ -67,9 +67,10 @@ serve(async (req) => {
       .select()
       .single();
 
-    if (familyError) {
-      return jsonResponse({ error: familyError.message }, 500);
-    }
+      if (familyError) {
+        console.error("❌ Failed to insert family:", familyError.message);
+        return jsonResponse({ error: familyError.message }, 500);
+      }
 
     // ✅ Insert actors
     const actorRecords = enrichedActors.map((actor: any) => ({
@@ -88,7 +89,7 @@ serve(async (req) => {
     }
 
     // ✅ Insert user
-    const { error: userError } = await supabase.from("users").insert({
+    const { error: userError } = await supabase.from("users").upsert({
       id: user.id,
       email: user.email,
       full_name: user.user_metadata?.full_name || "Unknown",
@@ -98,6 +99,7 @@ serve(async (req) => {
     });
 
     if (userError) {
+      console.error("❌ Failed to insert user:", userError.message);
       return jsonResponse({ error: userError.message }, 500);
     }
 
@@ -105,6 +107,7 @@ serve(async (req) => {
   } catch (err) {
     return jsonResponse({ error: "Invalid or missing JSON body" }, 400);
   }
+  
 });
 
 // ✅ Helper: Unified CORS JSON Response

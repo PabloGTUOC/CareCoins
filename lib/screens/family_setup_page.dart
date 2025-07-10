@@ -5,8 +5,8 @@ const _actorTypes = ['Child', 'Adult', 'Senior', 'Pet'];
 
 class _ActorEntry {
   _ActorEntry()
-      : nameController = TextEditingController(),
-        type = _actorTypes.first;
+    : nameController = TextEditingController(),
+      type = _actorTypes.first;
 
   final TextEditingController nameController;
   String type;
@@ -36,13 +36,15 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
         body: {'query': query},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Request sent')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Request sent')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     }
   }
@@ -51,30 +53,39 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
     final name = _familyNameController.text.trim();
     if (name.isEmpty) return;
     final role = _roleController.text.trim();
-    final actorPayload = _actors
-        .map((a) => {
-              'name': a.nameController.text.trim(),
-              'type': a.type,
-            })
-        .where((a) => a['name']!.isNotEmpty)
-        .toList();
+    final actorPayload =
+        _actors
+            .map((a) => {'name': a.nameController.text.trim(), 'type': a.type})
+            .where((a) => a['name']!.isNotEmpty)
+            .toList();
     try {
-      await Supabase.instance.client.functions.invoke(
+      final response = await Supabase.instance.client.functions.invoke(
         'create-family',
-        body: {
-          'family_name': name,
-          'role': role,
-          'actors': actorPayload,
-        },
+        body: {'family_name': name, 'role': role, 'actors': actorPayload},
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Family created')));
+
+      if (response.status == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Family created')));
+          await Future.delayed(
+            const Duration(milliseconds: 800),
+          ); // optional pause for UX
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed: ${response.data}')));
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed: $e')));
       }
     }
   }
@@ -82,8 +93,7 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
-    final userName =
-        user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
+    final userName = user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
     return Scaffold(
       appBar: AppBar(title: Text('Family Setup - $userName')),
       body: SingleChildScrollView(
@@ -160,14 +170,15 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                               if (val == null) return;
                               setState(() => entry.value.type = val);
                             },
-                            items: _actorTypes
-                                .map(
-                                  (t) => DropdownMenuItem(
-                                    value: t,
-                                    child: Text(t),
-                                  ),
-                                )
-                                .toList(),
+                            items:
+                                _actorTypes
+                                    .map(
+                                      (t) => DropdownMenuItem(
+                                        value: t,
+                                        child: Text(t),
+                                      ),
+                                    )
+                                    .toList(),
                           ),
                           if (_actors.length > 1)
                             IconButton(
@@ -183,7 +194,8 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
-                      onPressed: () => setState(() => _actors.add(_ActorEntry())),
+                      onPressed:
+                          () => setState(() => _actors.add(_ActorEntry())),
                       icon: const Icon(Icons.add),
                       label: const Text('Add Actor'),
                     ),
