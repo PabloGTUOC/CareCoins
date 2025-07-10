@@ -170,11 +170,6 @@ class _HomePageState extends State<HomePage> {
                     trailing: Text('${m['carecoins_balance'] ?? 0} CC'),
                   ),
                 ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => _logout(context),
-              child: const Text('Logout'),
-            ),
           ],
         ),
       ),
