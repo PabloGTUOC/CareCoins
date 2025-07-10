@@ -119,15 +119,17 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
+    final userName =
+        user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
     return Scaffold(
-      appBar: AppBar(title: const Text('CareCoins Dashboard')),
+      appBar: AppBar(title: Text('CareCoins Dashboard - $userName')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Welcome, ${user?.email ?? "Guest"}!\nBalance: $_balance CareCoins',
+              'Welcome, $userName!\nBalance: $_balance CareCoins',
               style: Theme.of(context).textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
