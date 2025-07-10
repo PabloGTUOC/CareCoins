@@ -4,7 +4,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 // 🎯 Handle requests
 serve(async (req) => {
-  // ✅ CORS Preflight
+  // ✅ Handle CORS Preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       headers: {
@@ -15,7 +15,7 @@ serve(async (req) => {
     });
   }
 
-  // ✅ Supabase client (with auth header from the request)
+  // ✅ Init Supabase client
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -29,11 +29,12 @@ serve(async (req) => {
   try {
     const { family_name, role, actors } = await req.json();
 
+    // ✅ Basic input validation
     if (!family_name || !role || !Array.isArray(actors)) {
       return jsonResponse({ error: "Missing family_name, role, or actors" }, 400);
     }
 
-    // ✅ Get current authenticated user
+    // ✅ Get authenticated user
     const {
       data: { user },
       error: authError,
@@ -44,14 +45,27 @@ serve(async (req) => {
     }
 
     const now = new Date();
-    const enrichedActors = actors.map((actor: any) => ({
-      name: actor.name,
-      type: actor.type,
-      coins_start_month: calculateCoinsForRestOfMonth(now),
-    }));
+
+    // ✅ Validate & enrich actors
+    const enrichedActors = [];
+    for (let i = 0; i < actors.length; i++) {
+      const actor = actors[i];
+      if (!actor.name || !actor.type) {
+        return jsonResponse(
+          { error: `Actor at index ${i} is missing required fields: name or type` },
+          400
+        );
+      }
+
+      enrichedActors.push({
+        name: actor.name,
+        type: actor.type,
+        coins_start_month: calculateCoinsForRestOfMonth(now),
+      });
+    }
 
     const totalCoins = enrichedActors.reduce(
-      (sum: number, actor: any) => sum + actor.coins_start_month,
+      (sum, actor) => sum + actor.coins_start_month,
       0
     );
 
@@ -67,16 +81,14 @@ serve(async (req) => {
       .select()
       .single();
 
-      if (familyError) {
-        console.error("❌ Failed to insert family:", familyError.message);
-        return jsonResponse({ error: familyError.message }, 500);
-      }
+    if (familyError) {
+      console.error("❌ Family insert error:", familyError.message);
+      return jsonResponse({ error: familyError.message }, 500);
+    }
 
     // ✅ Insert actors
-    const actorRecords = enrichedActors.map((actor: any) => ({
-      name: actor.name,
-      type: actor.type,
-      coins_start_month: actor.coins_start_month,
+    const actorRecords = enrichedActors.map(actor => ({
+      ...actor,
       family_id: family.id,
     }));
 
@@ -85,10 +97,11 @@ serve(async (req) => {
       .insert(actorRecords);
 
     if (actorError) {
+      console.error("❌ Actor insert error:", actorError.message);
       return jsonResponse({ error: actorError.message }, 500);
     }
 
-    // ✅ Insert user
+    // ✅ Insert or update user
     const { error: userError } = await supabase.from("users").upsert({
       id: user.id,
       email: user.email,
@@ -99,29 +112,29 @@ serve(async (req) => {
     });
 
     if (userError) {
-      console.error("❌ Failed to insert user:", userError.message);
+      console.error("❌ User insert error:", userError.message);
       return jsonResponse({ error: userError.message }, 500);
     }
 
     return jsonResponse({ success: true, family_id: family.id });
   } catch (err) {
+    console.error("❌ Unexpected error:", err);
     return jsonResponse({ error: "Invalid or missing JSON body" }, 400);
   }
-  
 });
 
-// ✅ Helper: Unified CORS JSON Response
+// ✅ JSON response helper
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*", // 🌍 change to your domain in prod
+      "Access-Control-Allow-Origin": "*",
     },
   });
 }
 
-// ✅ Helper: Calculate coins left in month based on your matrix
+// ✅ Compute coins from now to end of month
 function calculateCoinsForRestOfMonth(fromDate: Date): number {
   const matrix = getCareCoinMatrix();
   let total = 0;
@@ -132,7 +145,7 @@ function calculateCoinsForRestOfMonth(fromDate: Date): number {
   const endOfMonth = new Date(current.getFullYear(), current.getMonth() + 1, 1);
 
   while (current < endOfMonth) {
-    const dow = current.getDay(); // 0=Sun
+    const dow = current.getDay();
     const hour = current.getHours();
     total += matrix[dow][hour] ?? 0;
     current.setHours(current.getHours() + 1);
@@ -141,15 +154,15 @@ function calculateCoinsForRestOfMonth(fromDate: Date): number {
   return total;
 }
 
-// ✅ Your full matrix from spreadsheet
+// ✅ Full 7x24 coin matrix
 function getCareCoinMatrix(): number[][] {
   return [
-    [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2, 2, 2, 2, 1, 1], // Sunday
-    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1], // Monday
-    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1], // Tuesday
-    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1], // Wednesday
-    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1], // Thursday
-    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 4, 4, 4, 4], // Friday
-    [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], // Saturday
+    [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 2, 2, 2, 2, 2, 1, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1],
+    [1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 4, 4, 4, 4],
+    [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
   ];
 }
