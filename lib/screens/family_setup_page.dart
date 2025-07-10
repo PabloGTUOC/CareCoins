@@ -81,8 +81,11 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final userName =
+        user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
     return Scaffold(
-      appBar: AppBar(title: const Text('Family Setup')),
+      appBar: AppBar(title: Text('Family Setup - $userName')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
