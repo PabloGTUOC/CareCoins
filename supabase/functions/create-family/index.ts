@@ -27,7 +27,7 @@ serve(async (req) => {
   );
 
   try {
-    const { family_name, role, actors } = await req.json();
+    const { family_name, role, actors, pin } = await req.json();
 
     // ✅ Basic input validation
     if (!family_name || !role || !Array.isArray(actors)) {
@@ -77,6 +77,7 @@ serve(async (req) => {
         coins_start_month: totalCoins,
         coins_pending: totalCoins,
         coins_paid: 0,
+        pin,
       })
       .select()
       .single();

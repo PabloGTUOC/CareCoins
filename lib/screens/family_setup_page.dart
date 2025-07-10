@@ -22,10 +22,13 @@ class FamilySetupPage extends StatefulWidget {
 
 class _FamilySetupPageState extends State<FamilySetupPage> {
   bool _createMode = false;
+
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _familyNameController = TextEditingController();
   final TextEditingController _roleController = TextEditingController();
+  final TextEditingController _pinController = TextEditingController();
   final List<_ActorEntry> _actors = [_ActorEntry()];
+
   List<Map<String, dynamic>> _searchResults = [];
 
   Future<void> _searchFamilies() async {
@@ -36,39 +39,41 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
         'join-family-search',
         body: {'query': query},
       );
-
       if (response.status == 200 && response.data != null) {
         setState(() {
           _searchResults = List<Map<String, dynamic>>.from(
-            response.data['families'],
+            response.data['families'] ?? [],
           );
         });
       } else {
         setState(() => _searchResults = []);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('No families found')));
+        ).showSnackBar(SnackBar(content: Text('Search failed')));
       }
     } catch (e) {
       setState(() => _searchResults = []);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Search failed: $e')));
+      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
-  Future<void> _promptAndJoinFamily(String familyId) async {
+  Future<void> _showPinDialog(String familyId, String familyName) async {
     final pinController = TextEditingController();
-    final result = await showDialog<String?>(
+    return showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text('Enter Family PIN'),
+            title: Text('Join "$familyName"'),
             content: TextField(
               controller: pinController,
+              decoration: const InputDecoration(
+                labelText: 'Enter 4-digit PIN',
+                border: OutlineInputBorder(),
+              ),
               keyboardType: TextInputType.number,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'PIN'),
+              maxLength: 4,
             ),
             actions: [
               TextButton(
@@ -76,64 +81,104 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context, pinController.text),
+                onPressed: () async {
+                  final enteredPin = pinController.text.trim();
+                  if (enteredPin.length != 4 ||
+                      int.tryParse(enteredPin) == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Invalid PIN format')),
+                    );
+                    return;
+                  }
+
+                  try {
+                    final response = await Supabase.instance.client.functions
+                        .invoke(
+                          'join-pin',
+                          body: {'family_id': familyId, 'pin': enteredPin},
+                        );
+
+                    if (response.status == 200 && mounted) {
+                      Navigator.of(context).pop(); // ❗ Close dialog first
+                      await Future.delayed(
+                        const Duration(milliseconds: 100),
+                      ); // optional delay for smoother UX
+                      Navigator.pushReplacementNamed(context, '/home');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Successfully joined family'),
+                        ),
+                      );
+                      await Future.delayed(const Duration(milliseconds: 800));
+                      Navigator.pushReplacementNamed(context, '/home');
+                    } else {
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text('Incorrect PIN')));
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                },
                 child: const Text('Join'),
               ),
             ],
           ),
     );
-
-    final pin = result?.trim();
-    if (pin == null || pin.isEmpty) return;
-
-    try {
-      final response = await Supabase.instance.client.functions.invoke(
-        'join-family',
-        body: {'family_id': familyId, 'pin': pin},
-      );
-      if (response.status == 200) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: ${response.data['error']}')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
-    }
   }
 
   Future<void> _createFamily() async {
     final name = _familyNameController.text.trim();
-    if (name.isEmpty) return;
     final role = _roleController.text.trim();
+    final pin = _pinController.text.trim();
+
+    if (name.isEmpty || pin.length != 4 || int.tryParse(pin) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid 4-digit PIN')),
+      );
+      return;
+    }
+
     final actorPayload =
         _actors
             .map((a) => {'name': a.nameController.text.trim(), 'type': a.type})
             .where((a) => a['name']!.isNotEmpty)
             .toList();
+
     try {
       final response = await Supabase.instance.client.functions.invoke(
         'create-family',
-        body: {'family_name': name, 'role': role, 'actors': actorPayload},
+        body: {
+          'family_name': name,
+          'role': role,
+          'pin': pin,
+          'actors': actorPayload,
+        },
       );
+
       if (response.status == 200) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Family created')));
-        await Future.delayed(const Duration(milliseconds: 800));
-        Navigator.pushReplacementNamed(context, '/home');
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Family created')));
+          await Future.delayed(const Duration(milliseconds: 800));
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed: ${response.data}')));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed: ${response.data}')));
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      }
     }
   }
 
@@ -141,6 +186,7 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
     final userName = user?.userMetadata?['full_name'] ?? user?.email ?? 'Guest';
+
     return Scaffold(
       appBar: AppBar(title: Text('Family Setup - $userName')),
       body: SingleChildScrollView(
@@ -164,6 +210,7 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
               ],
             ),
             const SizedBox(height: 24),
+
             if (!_createMode) ...[
               TextField(
                 controller: _searchController,
@@ -172,28 +219,22 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _searchFamilies,
                 child: const Text('Search'),
               ),
               const SizedBox(height: 16),
               if (_searchResults.isNotEmpty)
-                Column(
-                  children:
-                      _searchResults
-                          .map(
-                            (family) => ListTile(
-                              title: Text(family['name'] ?? 'Unnamed'),
-                              subtitle: Text('ID: ${family['id']}'),
-                              trailing: ElevatedButton(
-                                child: const Text('Join'),
-                                onPressed:
-                                    () => _promptAndJoinFamily(family['id']),
-                              ),
-                            ),
-                          )
-                          .toList(),
+                ..._searchResults.map(
+                  (f) => ListTile(
+                    title: Text(f['name'] ?? 'Unnamed'),
+                    subtitle: Text('ID: ${f['id']}'),
+                    trailing: TextButton(
+                      onPressed: () => _showPinDialog(f['id'], f['name']),
+                      child: const Text('Join'),
+                    ),
+                  ),
                 ),
             ] else ...[
               TextField(
@@ -267,6 +308,16 @@ class _FamilySetupPageState extends State<FamilySetupPage> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _pinController,
+                decoration: const InputDecoration(
+                  labelText: '4-digit PIN',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                maxLength: 4,
               ),
               const SizedBox(height: 16),
               ElevatedButton(
