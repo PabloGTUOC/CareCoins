@@ -1,0 +1,407 @@
+CareCoins (React Native + Expo + Supabase)
+
+Family calendar + “care bank” where members earn/spend coins for caring activities. Coins vary by time of day and day of week. The app shows a calendar view, a coin counter per member, and supports family membership with PIN and Google/email auth.
+
+0) TL;DR for Codex
+
+Use Expo (managed) + Expo Router.
+
+Data/backend: Supabase (Postgres + RLS, Auth, Storage, Realtime, Edge Functions).
+
+State: TanStack Query for server state; optional small store (Zustand) for UI state.
+
+Styling: RN StyleSheet; pastel pink/green theme.
+
+Auth: Email/Password and Google OAuth (deep links).
+
+Screens to scaffold now: Landing, Register/Sign-in, Home (Dashboard).
+Next screens: Calendar, Coins, Profile, Join Family (with PIN), Create Family.
+
+Code in TypeScript. Strict mode on.
+
+1) Architecture
+React Native (Expo managed)
+ ├─ Expo Router (app directory)
+ ├─ Supabase JS client (auth, DB, storage, realtime, edge functions)
+ ├─ TanStack Query (server state)
+ └─ AsyncStorage (persist auth session)
+
+
+Why this stack: fastest multi-platform delivery, built-in OTA updates, clean data layer, and minimal native headaches.
+
+2) Product Scope (remembered requirements)
+
+  Users & Families
+    Sign up via email/password or Google.
+    Create a Family or Join Family via PIN.
+    Each user belongs to exactly one family (for v1).
+  Actors (Care Recipients)
+    Each family has one or more actors (e.g., child “Matteo”, or other non-adult dependents).
+  Coins
+    Coins vary by time of day and weekday (e.g., evenings/weekends more valuable).
+    Show coin counter per family member and family totals.
+    Track coins earned (care tasks) and coins paid/pending at family level.
+  Calendar
+    Show activities on a weekly/monthly calendar.
+  Activities types:
+    Personal → visible but does not reduce family debt/coins.
+    Family → reduces a member’s negative balance / transfers to family balance.
+  Scheduling rules:
+    Start at :00 or :30 only.
+    Min duration = 1 hour.
+    No overlaps for same user; no double-booking same slot.
+  Realtime
+    Family board and calendar should update live when members add activities.
+  Storage
+    Optional: upload avatars/receipts to a Supabase Storage bucket.
+  Security
+    Row Level Security (RLS) for all user/family data.
+    JWT claims used in policies.
+  Edge Functions
+    create-family: creates family, assigns user, inserts actors, updates family coin totals.
+    join-family-search: lookup families (by id or name) for joining; validate PIN.
+  Branding/UI
+    Pastel pink/green palette.
+    Clean, accessible UI.
+
+3) Tech Stack & Dependencies
+  Runtime: Expo SDK (managed workflow)
+  Navigation: expo-router
+  Auth/DB: @supabase/supabase-js
+  Storage: @react-native-async-storage/async-storage
+  Server state: @tanstack/react-query
+  Polyfills: react-native-url-polyfill, react-native-get-random-values
+  (Optional) UI store: zustand                                             
+
+Expo Router entry (package.json):
+
+{
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "build": "eas build",
+    "update": "eas update",
+    "lint": "eslint ."
+  }
+}
+
+5) Environment & Config
+
+Use app.config.ts for public runtime vars:
+
+import type { ExpoConfig } from 'expo/config';
+const config: ExpoConfig = {
+  name: 'CareCoins',
+  slug: 'carecoins',
+  scheme: 'carecoins',             // deep link scheme → carecoins://auth
+  extra: {
+    eas: { projectId: 'REPLACE' },
+    EXPO_PUBLIC_SUPABASE_URL: 'https://YOUR-PROJECT.supabase.co',
+    EXPO_PUBLIC_SUPABASE_ANON_KEY: 'YOUR-ANON-KEY'
+  }
+};
+export default config;
+
+6) Supabase Setup (DB schema & RLS)
+
+Tables (baseline)
+
+-- families
+create table if not exists public.families (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  pin text not null,                         -- 6 digits; store hashed if desired
+  coins_start_month int default 0,
+  coins_paid int default 0,
+  coins_pending int default 0,
+  created_at timestamptz default now()
+);
+
+-- actors (care recipients)
+create table if not exists public.actors (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  name text not null,
+  type text check (type in ('child','elder','other')) default 'child',
+  coins_start_month int default 0,
+  created_at timestamptz default now()
+);
+
+-- users (app profile; linked to auth.users via id = auth.uid())
+create table if not exists public.users (
+  id uuid primary key,                       -- = auth.uid()
+  email text unique not null,
+  full_name text,
+  family_id uuid references public.families(id) on delete set null,
+  role text check (role in ('admin','member')) default 'member',
+  coin_balance int default 0,
+  created_at timestamptz default now()
+);
+
+-- login history (optional analytics)
+create table if not exists public.login_history (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  login_time timestamptz default now(),
+  logout_time timestamptz,
+  duration interval
+);
+
+-- activities (calendar entries)
+create table if not exists public.activities (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  kind text check (kind in ('PERSONAL','FAMILY')) not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  note text,
+  created_at timestamptz default now(),
+  constraint non_overlapping_time check (ends_at > starts_at)
+);
+
+-- unique no overlap per user
+create unique index if not exists idx_activities_no_overlap
+on public.activities (user_id, starts_at);
+
+-- (Optional) coins ledger to keep audit trail
+create table if not exists public.coins_ledger (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families(id) on delete cascade,
+  user_id uuid references public.users(id) on delete set null,
+  delta int not null,                        -- +/- coins
+  reason text,                               -- e.g., 'activity', 'adjustment'
+  ref_id uuid,                               -- links to activity id
+  created_at timestamptz default now()
+);
+
+
+Enable RLS + example policies
+
+alter table public.families enable row level security;
+alter table public.users enable row level security;
+alter table public.actors enable row level security;
+alter table public.activities enable row level security;
+alter table public.coins_ledger enable row level security;
+
+-- users: read/update own row
+create policy "users: read own"
+on public.users for select
+to authenticated
+using (id = auth.uid());
+
+create policy "users: update own"
+on public.users for update
+to authenticated
+using (id = auth.uid());
+
+-- families: members can read
+create policy "families: members read"
+on public.families for select
+to authenticated
+using (exists (
+  select 1 from public.users u where u.id = auth.uid() and u.family_id = families.id
+));
+
+-- actors: family members can read
+create policy "actors: family read"
+on public.actors for select
+to authenticated
+using (exists (
+  select 1 from public.users u where u.id = auth.uid() and u.family_id = actors.family_id
+));
+
+-- activities: family members can CRUD within their family
+create policy "activities: family read"
+on public.activities for select
+to authenticated
+using (exists (
+  select 1 from public.users u where u.id = auth.uid() and u.family_id = activities.family_id
+));
+
+create policy "activities: family insert"
+on public.activities for insert
+to authenticated
+with check (exists (
+  select 1 from public.users u where u.id = auth.uid() and u.family_id = activities.family_id
+));
+
+create policy "activities: own update/delete"
+on public.activities for update using (user_id = auth.uid())
+to authenticated;
+
+create policy "activities: own delete"
+on public.activities for delete using (user_id = auth.uid())
+to authenticated;
+
+
+Note: tighten policies as needed for admins vs members.
+
+7) Edge Functions (server logic)
+create-family
+
+Input: { name, pin, actors: [{name,type,coins_start_month}, ...] }
+
+Steps:
+
+Create family (hash pin if desired).
+
+Assign current auth.uid() to the family as role='admin'.
+
+Insert actors; sum coins_start_month → update families.coins_start_month.
+
+Output: { familyId }
+
+Auth: requires authenticated JWT.
+
+join-family-search
+
+Search families by { id or name }.
+
+If joining: validate PIN, attach user, and (optionally) redistribute coin balances according to rules:
+
+If 1 user existed → split balances among both users.
+
+If >2 users → redistribute among all users.
+
+If custom units/coins provided for the new user → assign that and redistribute the rest.
+
+Return family basics for confirmation.
+
+Place function code under supabase/functions/<name>/index.ts. Use Deno runtime. Validate inputs. Enforce no cross-family data leaks.
+
+8) App Structure (Expo Router)
+app/
+  _layout.tsx                # root providers (QueryClient, SafeArea, Splash)
+  index.tsx                  # Landing
+  (auth)/
+    _layout.tsx
+    register.tsx             # Register & Sign-in
+    join.tsx                 # Join family via PIN (next)
+  (app)/
+    _layout.tsx
+    home.tsx                 # Dashboard (coins summary, quick links)
+    calendar.tsx             # Calendar with week/month switch
+    coins.tsx                # Ledger + per-member counters
+    profile.tsx              # User profile & sign out
+lib/
+  supabase.ts                # client with AsyncStorage
+  timeRules.ts               # coin multipliers (by time/day)
+components/
+  AuthButton.tsx
+  TextField.tsx
+  CalendarGrid.tsx           # (next)
+  CoinBadge.tsx
+  FamilyCard.tsx
+hooks/
+  useSession.ts
+  useFamily.ts
+  useActivities.ts
+theme/
+  colors.ts                  # pastel pink/green
+
+9) Navigation & Auth Flow
+
+Landing → “Continue with Google” / “Sign up with Email” → Register/Sign-in
+
+After auth:
+
+If user has no family → Create Family or Join Family (PIN)
+
+Else → Home (Dashboard)
+
+Deep link scheme: carecoins://auth for OAuth redirects (configure in Supabase Auth → Redirect URLs).
+
+10) Data Layer Patterns
+
+TanStack Query
+
+Each screen uses a useQuery hook to load data (families, actors, activities, coins_ledger).
+
+Mutations invalidate relevant queries.
+
+Realtime
+
+Subscribe to activities and coins_ledger by family_id.
+
+On change → update cache or invalidate queries.
+
+11) Calendar & Coins Logic (first pass)
+
+Time rules (lib/timeRules.ts):
+
+Define multipliers, e.g.:
+
+Weekdays 08:00–18:00 → x1
+
+Evenings 18:00–22:00 → x1.5
+
+Nights 22:00–08:00 → x0.5
+
+Weekends → x3 multiplier
+
+Coins per activity:
+
+baseCoins = durationHours * 1
+
+coins = baseCoins * timeMultiplier(starts_at..ends_at)
+
+For FAMILY activities: create ledger entry delta=+coins for user and adjust family totals accordingly.
+
+Keep calculation in the client for preview, but final write via an Edge Function to avoid tampering.
+
+12) Theming
+
+Pastel palette (example):
+
+export const Colors = {
+  bg: '#FBF7FA',
+  text: '#4A4A4A',
+  muted: '#9AA0A6',
+  pink300: '#F7B5C5',
+  pink500: '#F48FB1',
+  pink900: '#AD1457',
+  green700: '#26A69A',
+  green900: '#1B5E20',
+};
+
+13) Coding Standards
+
+TypeScript strict: no any unless justified.
+
+File naming: kebab or camel consistently (choose one).
+
+Components are pure; side effects in hooks.
+
+Keep Supabase RPC inside hooks or /services.
+
+Accessibility: semantic roles, touch targets ≥ 44px.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
